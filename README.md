@@ -1,22 +1,20 @@
-# Family Dashboard V1.4.1
+# Family Dashboard V2.0
 
-V1.4 connects the wall dashboard to the real Google Calendar data.
+V2 introduces the Family Hub navigation shell while preserving the working Google Calendar + Cloudflare backend.
 
-## Expected Google calendars
-- John
-- Amanda
-- Anthony
-- Family
+## Screens
+- Overview: real Google Calendar events + Grocery summary
+- Calendar: real upcoming events
+- Tasks: V2 shell placeholder
+- Grocery: pre-built household grocery inventory with one-tap selection
+- Meals: V2 shell placeholder
+- Settings: V2 shell placeholder
 
-Calendar matching is case-insensitive and accent-insensitive. The Google account authorized by OAuth must have access to these calendars.
+## Grocery V2.0 behavior
+The Grocery list is intentionally local-only in this first V2 shell and persists in the iPad browser via localStorage. This proves the wall interaction before a shared mobile sync provider/database is selected. Do not treat it as multi-device sync yet.
 
-## Endpoints
-- `/` live family dashboard
-- `/api/health` backend health check (version 1.4)
-- `/api/calendar` merged events from the four family calendars for the next 14 days
+## iPad compatibility
+No framework. Plain HTML/CSS/JavaScript, designed for iPad Air 1 / iOS 12.5.8.
 
-The dashboard refreshes calendar data every 5 minutes and keeps all Google credentials in Cloudflare Secrets.
-
-
-## V1.4.1
-Household-facing UI is now fully in English, and the shared calendar is named `Family`.
+## Backend
+Existing Cloudflare Worker OAuth and Google Calendar secrets remain unchanged.

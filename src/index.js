@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '1.4.1' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.0' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -72,7 +72,7 @@ export default {
       }));
 
       const events = results.flat().sort((a, b) => String(a.start).localeCompare(String(b.start)));
-      return json({ ok: true, configured: true, version: '1.4.1', rangeDays: 14, calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
+      return json({ ok: true, configured: true, version: '2.0', rangeDays: 14, calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
     }
 
     return env.ASSETS.fetch(request);
