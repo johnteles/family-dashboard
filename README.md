@@ -1,16 +1,16 @@
-# Family Dashboard V1.3
+# Family Dashboard V1.3.1
 
-V1.3 converts the project from static-only assets to a Cloudflare Worker plus Static Assets.
+Adds Google OAuth routes to the Cloudflare Worker.
 
-## Structure
-- `public/index.html`: existing iPad-compatible dashboard
-- `src/index.js`: Worker backend
-- `wrangler.jsonc`: Cloudflare Worker + Assets configuration
-- `package.json`: Wrangler dependency and scripts
+## Routes
+- `/api/health` backend health check (version 1.3.1)
+- `/oauth/start` starts Google Calendar read-only OAuth
+- `/oauth/callback` exchanges the authorization code and shows the refresh token once
+- `/api/calendar` reads the next 14 days from the authenticated Google account primary calendar
 
-## Test endpoints
-- `/` -> dashboard
-- `/api/health` -> backend health check
-- `/api/calendar` -> Calendar scaffold; returns 503 until Google secrets are configured
+## Required Cloudflare Secrets
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REFRESH_TOKEN` (added after completing `/oauth/start`)
 
-Do not commit Google credentials or refresh tokens to GitHub. Add them later as Cloudflare Secrets.
+Never commit credentials or tokens to GitHub.
