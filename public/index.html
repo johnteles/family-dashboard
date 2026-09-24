@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Painel da Família</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;background:#f3f0ea;color:#302f2c}body{overflow:hidden}.app{height:100vh;padding:28px 34px;display:flex;flex-direction:column}.top{height:18%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #d8d2c8}.date{font-size:30px;font-weight:600}.greeting{font-size:20px;color:#777168;margin-top:8px}.clock{font-size:56px;font-weight:300;letter-spacing:-2px}.content{height:82%;display:flex;padding-top:26px}.today{width:58%;padding-right:30px;border-right:1px solid #d8d2c8}.week{width:42%;padding-left:30px}.section-title{font-size:16px;letter-spacing:2px;color:#8a8379;font-weight:700;margin-bottom:20px}.event{display:flex;margin-bottom:22px}.time{width:90px;font-size:21px;font-weight:600}.event-body{border-left:4px solid #6d8796;padding-left:16px}.event-title{font-size:24px;font-weight:600}.event-sub{font-size:17px;color:#7a756e;margin-top:4px}.family .event-body{border-color:#b98b72}.child .event-body{border-color:#879b79}.partner .event-body{border-color:#a889a3}.day{margin-bottom:20px}.day-name{font-size:17px;font-weight:700;color:#6f6961;margin-bottom:7px}.day-event{font-size:20px;padding-left:14px;border-left:3px solid #b98b72}.empty{font-size:18px;color:#8b857c}.footer{position:absolute;right:34px;bottom:14px;font-size:12px;color:#aaa39a}@media(max-width:800px){.app{padding:20px}.date{font-size:24px}.clock{font-size:44px}.event-title{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div><div id="date" class="date"></div><div id="greeting" class="greeting"></div></div>
+    <div id="clock" class="clock"></div>
+  </header>
+  <main class="content">
+    <section class="today">
+      <div class="section-title">HOJE</div>
+      <div id="todayEvents"></div>
+    </section>
+    <section class="week">
+      <div class="section-title">PRÓXIMOS DIAS</div>
+      <div id="weekEvents"></div>
+    </section>
+  </main>
+  <div class="footer">Painel da Família · V1.3</div>
+</div>
+<script>
+// MVP: edite apenas esta lista enquanto o Google Calendar ainda não estiver conectado.
+var EVENTS = [
+ {offset:0,time:'08:00',title:'Trabalho',sub:'Compromisso pessoal',who:'me'},
+ {offset:0,time:'16:00',title:'Atividade do Anthony',sub:'Família',who:'child'},
+ {offset:0,time:'19:30',title:'Jantar em família',sub:'Em casa',who:'family'},
+ {offset:1,time:'09:00',title:'Compromisso da família',sub:'Agenda compartilhada',who:'family'},
+ {offset:2,time:'18:30',title:'Evento',sub:'Próximo compromisso',who:'partner'},
+ {offset:4,time:'12:00',title:'Almoço em família',sub:'Fim de semana',who:'family'}
+];
+var DAYS=['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+var MONTHS=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function pad(n){return n<10?'0'+n:n}
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
+function updateHeader(){var n=new Date();document.getElementById('date').innerHTML=cap(DAYS[n.getDay()])+', '+n.getDate()+' de '+MONTHS[n.getMonth()];document.getElementById('clock').innerHTML=pad(n.getHours())+':'+pad(n.getMinutes());var h=n.getHours(),g=h<12?'Bom dia!':h<18?'Boa tarde!':'Boa noite!';document.getElementById('greeting').innerHTML=g+' Agenda da família.'}
+function eventHtml(e){return '<div class="event '+e.who+'"><div class="time">'+e.time+'</div><div class="event-body"><div class="event-title">'+e.title+'</div><div class="event-sub">'+e.sub+'</div></div></div>'}
+function render(){var t='',w='',todayCount=0;for(var i=0;i<EVENTS.length;i++){var e=EVENTS[i];if(e.offset===0){t+=eventHtml(e);todayCount++}else{var d=new Date();d.setDate(d.getDate()+e.offset);w+='<div class="day"><div class="day-name">'+cap(DAYS[d.getDay()])+' · '+pad(d.getDate())+'/'+pad(d.getMonth()+1)+'</div><div class="day-event">'+e.time+' · '+e.title+'</div></div>'}}document.getElementById('todayEvents').innerHTML=todayCount?t:'<div class="empty">Nenhum compromisso para hoje.</div>';document.getElementById('weekEvents').innerHTML=w||'<div class="empty">Agenda livre nos próximos dias.</div>'}
+updateHeader();render();setInterval(updateHeader,30000);
+</script>
+</body>
+</html>
