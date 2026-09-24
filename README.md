@@ -1,16 +1,18 @@
-# Family Dashboard V1.3.1
+# Family Dashboard V1.4
 
-Adds Google OAuth routes to the Cloudflare Worker.
+V1.4 connects the wall dashboard to the real Google Calendar data.
 
-## Routes
-- `/api/health` backend health check (version 1.3.1)
-- `/oauth/start` starts Google Calendar read-only OAuth
-- `/oauth/callback` exchanges the authorization code and shows the refresh token once
-- `/api/calendar` reads the next 14 days from the authenticated Google account primary calendar
+## Expected Google calendars
+- John
+- Amanda
+- Anthony
+- Família
 
-## Required Cloudflare Secrets
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REFRESH_TOKEN` (added after completing `/oauth/start`)
+Calendar matching is case-insensitive and accent-insensitive. The Google account authorized by OAuth must have access to these calendars.
 
-Never commit credentials or tokens to GitHub.
+## Endpoints
+- `/` live family dashboard
+- `/api/health` backend health check (version 1.4)
+- `/api/calendar` merged events from the four family calendars for the next 14 days
+
+The dashboard refreshes calendar data every 5 minutes and keeps all Google credentials in Cloudflare Secrets.
