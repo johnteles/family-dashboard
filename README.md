@@ -1,8 +1,8 @@
-# Family Dashboard V2.4 — Grocery Item Management
+# Family Dashboard V2.4.1.1 — Grocery Item Management
 
 Adds shared Grocery master-list management from the iPhone while keeping the wall iPad experience simple.
 
-## New in V2.4
+## New in V2.4.1.1
 - `+ ADD ITEM` on the mobile Grocery app.
 - Choose category when adding an item.
 - `Add to Shopping List` enabled by default for new items.
@@ -18,4 +18,10 @@ Open `/grocery/` on iPhone. Use **SHOPPING LIST** while shopping and **ALL ITEMS
 ## Deploy
 Replace/add the files from this package in the existing GitHub repository and deploy normally through Cloudflare.
 
-Health check: `/api/health` should report version `2.4`.
+Health check: `/api/health` should report version `2.4.1`.
+
+
+## V2.4.1
+- Restores race-safe optimistic Grocery sync for dynamically created items.
+- Adds a red trash action to each row in All Items.
+- Adds a custom Remove item? confirmation with YES / NO.
