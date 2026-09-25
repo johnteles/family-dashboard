@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.2' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.3' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -63,6 +63,32 @@ export default {
       });
     }
 
+    if (url.pathname === '/api/grocery') {
+      if (!env.DB) return json({ ok: false, configured: false, error: 'D1 binding DB is missing.' }, 503);
+      await ensureGrocerySchema(env.DB);
+      if (request.method === 'GET') {
+        const rows = await env.DB.prepare('SELECT id, category, name, sort_order, needed, updated_at FROM grocery_items ORDER BY category_order, sort_order, name').all();
+        return json({ ok: true, version: '2.3', items: rows.results || [] });
+      }
+      if (request.method === 'POST') {
+        let body;
+        try { body = await request.json(); } catch (e) { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+        const id = Number(body && body.id);
+        if (!id) return json({ ok: false, error: 'Item id is required.' }, 400);
+        if (body.action === 'toggle') {
+          await env.DB.prepare("UPDATE grocery_items SET needed = CASE WHEN needed = 1 THEN 0 ELSE 1 END, updated_at = datetime('now') WHERE id = ?").bind(id).run();
+        } else if (body.action === 'set') {
+          const needed = body.needed ? 1 : 0;
+          await env.DB.prepare("UPDATE grocery_items SET needed = ?, updated_at = datetime('now') WHERE id = ?").bind(needed, id).run();
+        } else {
+          return json({ ok: false, error: 'Unsupported action.' }, 400);
+        }
+        const item = await env.DB.prepare('SELECT id, category, name, sort_order, needed, updated_at FROM grocery_items WHERE id = ?').bind(id).first();
+        return json({ ok: true, item: item });
+      }
+      return json({ ok: false, error: 'Method not allowed.' }, 405);
+    }
+
     if (url.pathname === '/api/calendar') {
       if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) return json({ ok: false, configured: false }, 503);
       const accessToken = await getGoogleAccessToken(env);
@@ -97,12 +123,27 @@ export default {
       }));
 
       const events = results.flat().sort((a, b) => String(a.start).localeCompare(String(b.start)));
-      return json({ ok: true, configured: true, version: '2.2', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
+      return json({ ok: true, configured: true, version: '2.3', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
     }
 
     return env.ASSETS.fetch(request);
   }
 };
+
+async function ensureGrocerySchema(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS grocery_items (id INTEGER PRIMARY KEY AUTOINCREMENT, category TEXT NOT NULL, category_order INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL UNIQUE, sort_order INTEGER NOT NULL DEFAULT 0, needed INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT (datetime('now'))) ").run();
+  const count = await db.prepare('SELECT COUNT(*) AS count FROM grocery_items').first();
+  if (count && Number(count.count) > 0) return;
+  const seed = [
+    ['DAIRY & EGGS',1,'Milk',1],['DAIRY & EGGS',1,'Eggs',2],['DAIRY & EGGS',1,'Butter',3],['DAIRY & EGGS',1,'Cheese',4],['DAIRY & EGGS',1,'Yogurt',5],
+    ['FRUIT & VEGETABLES',2,'Bananas',1],['FRUIT & VEGETABLES',2,'Apples',2],['FRUIT & VEGETABLES',2,'Oranges',3],['FRUIT & VEGETABLES',2,'Tomatoes',4],['FRUIT & VEGETABLES',2,'Potatoes',5],['FRUIT & VEGETABLES',2,'Onions',6],['FRUIT & VEGETABLES',2,'Garlic',7],['FRUIT & VEGETABLES',2,'Lettuce',8],
+    ['PANTRY',3,'Rice',1],['PANTRY',3,'Beans',2],['PANTRY',3,'Pasta',3],['PANTRY',3,'Bread',4],['PANTRY',3,'Coffee',5],['PANTRY',3,'Olive oil',6],['PANTRY',3,'Flour',7],['PANTRY',3,'Sugar',8],['PANTRY',3,'Salt',9],
+    ['HOUSEHOLD',4,'Toilet paper',1],['HOUSEHOLD',4,'Paper towels',2],['HOUSEHOLD',4,'Dish soap',3],['HOUSEHOLD',4,'Dishwasher tablets',4],['HOUSEHOLD',4,'Trash bags',5],['HOUSEHOLD',4,'Laundry detergent',6]
+  ];
+  const statements = [];
+  for (const row of seed) statements.push(db.prepare('INSERT OR IGNORE INTO grocery_items (category, category_order, name, sort_order) VALUES (?, ?, ?, ?)').bind(row[0], row[1], row[2], row[3]));
+  await db.batch(statements);
+}
 
 async function getGoogleAccessToken(env) {
   const body = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: env.GOOGLE_REFRESH_TOKEN, grant_type: 'refresh_token' });
