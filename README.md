@@ -1,17 +1,16 @@
-# Family Dashboard V2.1
+# Family Dashboard V2.2
 
-V2.1 refines the wall-iPad experience while preserving the V2 navigation shell.
+V2.2 refines the wall-dashboard UX while preserving the existing Google Calendar, Cloudflare Access and weather integrations.
 
 ## Changes
-- Overview: current Rio de Janeiro weather and temperature centered between date and clock.
-- Weather is fetched server-side from Open-Meteo through `/api/weather` and refreshed every 10 minutes.
-- Grocery: four categories fit in one horizontal row on the iPad.
-- Grocery: selected items use a green check and subtle green highlight.
-- Calendar, Google OAuth, Grocery local persistence, sidebar, auto-return, Tasks and Meals behavior remain unchanged.
 
-## Endpoints
-- `/api/health` -> version 2.1
-- `/api/calendar` -> family Google Calendar events
-- `/api/weather` -> current weather summary
+- Home header is hardened for iPad Air / iOS 12 so the date stays on one line.
+- Home content is now a three-column overview: **Today**, **Upcoming**, and **Grocery**.
+- Grocery keeps the four-column quick-add layout and green selected state from V2.1.
+- Calendar is redesigned around **Month / Week / Day** views.
+- Month is the default calendar view.
+- Previous / Today / Next navigation is included.
+- Tapping a day in Month view opens that date in Day view.
+- Calendar API accepts optional `start` and `end` query parameters (capped at 93 days) so Month view can request the correct date range.
 
-Weather data: Open-Meteo (CC BY 4.0), https://open-meteo.com/
+No Google OAuth secrets or refresh tokens belong in this repository.

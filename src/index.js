@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.1' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.2' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -78,10 +78,14 @@ export default {
       const calendars = (listData.items || []).filter((c) => wanted[normalizeName(c.summary)]).map((c) => ({ id: c.id, name: wanted[normalizeName(c.summary)] }));
 
       const now = new Date();
-      const end = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+      let start = parseDateParam(url.searchParams.get('start')) || now;
+      let end = parseDateParam(url.searchParams.get('end')) || new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000);
+      const maxWindowMs = 93 * 24 * 60 * 60 * 1000;
+      if (end <= start) end = new Date(start.getTime() + 45 * 24 * 60 * 60 * 1000);
+      if (end.getTime() - start.getTime() > maxWindowMs) end = new Date(start.getTime() + maxWindowMs);
       const results = await Promise.all(calendars.map(async (cal) => {
         const eventsUrl = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events`);
-        eventsUrl.searchParams.set('timeMin', now.toISOString());
+        eventsUrl.searchParams.set('timeMin', start.toISOString());
         eventsUrl.searchParams.set('timeMax', end.toISOString());
         eventsUrl.searchParams.set('singleEvents', 'true');
         eventsUrl.searchParams.set('orderBy', 'startTime');
@@ -93,7 +97,7 @@ export default {
       }));
 
       const events = results.flat().sort((a, b) => String(a.start).localeCompare(String(b.start)));
-      return json({ ok: true, configured: true, version: '2.1', rangeDays: 14, calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
+      return json({ ok: true, configured: true, version: '2.2', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
     }
 
     return env.ASSETS.fetch(request);
@@ -106,6 +110,12 @@ async function getGoogleAccessToken(env) {
   const data = await r.json();
   if (!r.ok) return { ok: false, step: 'refresh_token', error: data };
   return { ok: true, access_token: data.access_token };
+}
+
+function parseDateParam(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 function normalizeName(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
 function getCookie(header, name) { const parts = header.split(';'); for (const part of parts) { const i = part.indexOf('='); if (i >= 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim()); } return null; }
