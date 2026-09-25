@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.0' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.1' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -42,6 +42,27 @@ export default {
       return html(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Family Dashboard OAuth</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif;max-width:760px;margin:48px auto;padding:0 20px;line-height:1.5}code{display:block;word-break:break-all;padding:16px;background:#f2f2f2;border-radius:10px}</style><h1>Authorization complete</h1><p>Save the value below as the <b>GOOGLE_REFRESH_TOKEN</b> Secret.</p><code>${escapeHtml(tokenData.refresh_token)}</code></html>`);
     }
 
+    if (url.pathname === '/api/weather') {
+      // Rio de Janeiro city-level coordinates. Open-Meteo requires no API key for non-commercial use.
+      const weatherUrl = new URL('https://api.open-meteo.com/v1/forecast');
+      weatherUrl.searchParams.set('latitude', '-22.9068');
+      weatherUrl.searchParams.set('longitude', '-43.1729');
+      weatherUrl.searchParams.set('current', 'temperature_2m,apparent_temperature,weather_code,is_day');
+      weatherUrl.searchParams.set('temperature_unit', 'celsius');
+      weatherUrl.searchParams.set('timezone', 'America/Sao_Paulo');
+      const r = await fetch(weatherUrl.toString(), { cf: { cacheTtl: 600, cacheEverything: true } });
+      const data = await r.json();
+      if (!r.ok || !data.current) return json({ ok: false, step: 'weather', error: data }, 502);
+      return json({
+        ok: true,
+        temperature: Math.round(data.current.temperature_2m),
+        apparentTemperature: Math.round(data.current.apparent_temperature),
+        weatherCode: data.current.weather_code,
+        isDay: data.current.is_day === 1,
+        source: 'Open-Meteo'
+      });
+    }
+
     if (url.pathname === '/api/calendar') {
       if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) return json({ ok: false, configured: false }, 503);
       const accessToken = await getGoogleAccessToken(env);
@@ -72,7 +93,7 @@ export default {
       }));
 
       const events = results.flat().sort((a, b) => String(a.start).localeCompare(String(b.start)));
-      return json({ ok: true, configured: true, version: '2.0', rangeDays: 14, calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
+      return json({ ok: true, configured: true, version: '2.1', rangeDays: 14, calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
     }
 
     return env.ASSETS.fetch(request);
