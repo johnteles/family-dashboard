@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.3.3' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.4' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -68,18 +68,39 @@ export default {
       await ensureGrocerySchema(env.DB);
       if (request.method === 'GET') {
         const rows = await env.DB.prepare('SELECT id, category, name, sort_order, needed, updated_at FROM grocery_items ORDER BY category_order, sort_order, name').all();
-        return json({ ok: true, version: '2.3.3', items: rows.results || [] });
+        return json({ ok: true, version: '2.4', items: rows.results || [] });
       }
       if (request.method === 'POST') {
         let body;
         try { body = await request.json(); } catch (e) { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+        const action = body && body.action;
+        if (action === 'create') {
+          const name = String(body.name || '').trim();
+          const category = String(body.category || 'PANTRY').trim().toUpperCase();
+          if (!name) return json({ ok: false, error: 'Item name is required.' }, 400);
+          const duplicate = await env.DB.prepare('SELECT id, category, name FROM grocery_items WHERE lower(name) = lower(?)').bind(name).first();
+          if (duplicate) return json({ ok: false, error: duplicate.name + ' is already in ' + duplicate.category + '.', duplicate: duplicate }, 409);
+          const categoryOrder = categoryOrderFor(category);
+          const maxRow = await env.DB.prepare('SELECT COALESCE(MAX(sort_order),0) AS n FROM grocery_items WHERE category = ?').bind(category).first();
+          await env.DB.prepare("INSERT INTO grocery_items (category, category_order, name, sort_order, needed, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))").bind(category, categoryOrder, name, Number(maxRow && maxRow.n || 0) + 1, body.needed === false ? 0 : 1).run();
+          const item = await env.DB.prepare('SELECT id, category, name, sort_order, needed, updated_at FROM grocery_items WHERE lower(name) = lower(?)').bind(name).first();
+          return json({ ok: true, item: item }, 201);
+        }
         const id = Number(body && body.id);
         if (!id) return json({ ok: false, error: 'Item id is required.' }, 400);
-        if (body.action === 'toggle') {
-          await env.DB.prepare("UPDATE grocery_items SET needed = CASE WHEN needed = 1 THEN 0 ELSE 1 END, updated_at = datetime('now') WHERE id = ?").bind(id).run();
-        } else if (body.action === 'set') {
+        if (action === 'set') {
           const needed = body.needed ? 1 : 0;
           await env.DB.prepare("UPDATE grocery_items SET needed = ?, updated_at = datetime('now') WHERE id = ?").bind(needed, id).run();
+        } else if (action === 'update') {
+          const name = String(body.name || '').trim();
+          const category = String(body.category || '').trim().toUpperCase();
+          if (!name || !category) return json({ ok: false, error: 'Name and category are required.' }, 400);
+          const duplicate = await env.DB.prepare('SELECT id, category, name FROM grocery_items WHERE lower(name) = lower(?) AND id <> ?').bind(name, id).first();
+          if (duplicate) return json({ ok: false, error: duplicate.name + ' is already in ' + duplicate.category + '.', duplicate: duplicate }, 409);
+          await env.DB.prepare("UPDATE grocery_items SET name = ?, category = ?, category_order = ?, updated_at = datetime('now') WHERE id = ?").bind(name, category, categoryOrderFor(category), id).run();
+        } else if (action === 'delete') {
+          await env.DB.prepare('DELETE FROM grocery_items WHERE id = ?').bind(id).run();
+          return json({ ok: true, deleted: id });
         } else {
           return json({ ok: false, error: 'Unsupported action.' }, 400);
         }
@@ -123,7 +144,7 @@ export default {
       }));
 
       const events = results.flat().sort((a, b) => String(a.start).localeCompare(String(b.start)));
-      return json({ ok: true, configured: true, version: '2.3.3', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
+      return json({ ok: true, configured: true, version: '2.4', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
     }
 
     return env.ASSETS.fetch(request);
@@ -151,6 +172,11 @@ async function getGoogleAccessToken(env) {
   const data = await r.json();
   if (!r.ok) return { ok: false, step: 'refresh_token', error: data };
   return { ok: true, access_token: data.access_token };
+}
+
+function categoryOrderFor(category) {
+  const order = { 'DAIRY & EGGS': 1, 'FRUIT & VEGETABLES': 2, 'PANTRY': 3, 'HOUSEHOLD': 4, 'MEAT & SEAFOOD': 5, 'DRINKS': 6, 'FROZEN': 7, 'PERSONAL CARE': 8, 'BABY & KIDS': 9 };
+  return order[String(category || '').toUpperCase()] || 99;
 }
 
 function parseDateParam(value) {
