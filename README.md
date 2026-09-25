@@ -1,4 +1,4 @@
-# Family Dashboard V2.3 — Shared Grocery
+# Family Dashboard V2.3.1 — Shared Grocery
 
 V2.3 turns Grocery into a shared family service instead of iPad-local state.
 
@@ -32,3 +32,11 @@ If the deployment asks you to select/create a D1 database instead, create one na
 Open `/grocery/` in Safari, then use Share → Add to Home Screen. The installed shortcut is named **Grocery** and uses the included basket icon.
 
 The existing Cloudflare Access policy continues to protect the Worker and the Grocery app.
+
+
+## V2.3.1 performance update
+
+- Grocery taps now use optimistic UI: the green check changes immediately.
+- D1 synchronization runs in the background.
+- Failed writes roll the local state back.
+- Silent refresh interval reduced to 5 seconds for faster cross-device synchronization.
