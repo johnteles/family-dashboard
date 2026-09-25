@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.3.2' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.3.3' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -68,7 +68,7 @@ export default {
       await ensureGrocerySchema(env.DB);
       if (request.method === 'GET') {
         const rows = await env.DB.prepare('SELECT id, category, name, sort_order, needed, updated_at FROM grocery_items ORDER BY category_order, sort_order, name').all();
-        return json({ ok: true, version: '2.3.2', items: rows.results || [] });
+        return json({ ok: true, version: '2.3.3', items: rows.results || [] });
       }
       if (request.method === 'POST') {
         let body;
@@ -123,7 +123,7 @@ export default {
       }));
 
       const events = results.flat().sort((a, b) => String(a.start).localeCompare(String(b.start)));
-      return json({ ok: true, configured: true, version: '2.3.2', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
+      return json({ ok: true, configured: true, version: '2.3.3', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
     }
 
     return env.ASSETS.fetch(request);

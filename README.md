@@ -1,4 +1,4 @@
-# Family Dashboard V2.3.2
+# Family Dashboard V2.3.3
 
 Grocery sync stability update.
 
@@ -15,4 +15,9 @@ Grocery sync stability update.
 2. Tap an item once: the check should change immediately and stay stable.
 3. Tap the same item rapidly several times in **All Items**: the final visible state should be the final state stored on the server.
 4. Confirm the other device converges to the same state within about 5 seconds.
-5. `/api/health` should report version `2.3.2`.
+5. `/api/health` should report version `2.3.3`.
+
+
+## V2.3.3
+- Adds a removal tombstone / awaiting-confirmation layer so stale polling snapshots cannot resurrect an item after it is unchecked.
+- Keeps optimistic UI and latest-intention-wins behavior.
