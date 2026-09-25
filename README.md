@@ -1,23 +1,21 @@
-# Family Dashboard V2.3.3
+# Family Dashboard V2.4 — Grocery Item Management
 
-Grocery sync stability update.
+Adds shared Grocery master-list management from the iPhone while keeping the wall iPad experience simple.
 
-## Changes
-- Optimistic UI remains instant.
-- Per-item pending state prevents polling from overwriting an unconfirmed local tap.
-- Grocery writes now send the desired final state (`set`) instead of a blind server-side toggle.
-- Writes are serialized per item so the latest user intention wins, even with rapid taps.
-- Polling continues every 5 seconds for cross-device synchronization.
-- Failed writes clear pending state and reconcile with the server.
+## New in V2.4
+- `+ ADD ITEM` on the mobile Grocery app.
+- Choose category when adding an item.
+- `Add to Shopping List` enabled by default for new items.
+- Duplicate-name prevention in D1 (case-insensitive).
+- Long-press an item on iPhone to edit its name/category or delete it.
+- New categories supported: Meat & Seafood, Drinks, Frozen, Personal Care, Baby & Kids.
+- New items are stored in D1 and automatically appear on the wall iPad on its next refresh.
+- Existing Grocery selection/sync behavior remains intact.
 
-## Test
-1. Open Grocery on iPad and iPhone.
-2. Tap an item once: the check should change immediately and stay stable.
-3. Tap the same item rapidly several times in **All Items**: the final visible state should be the final state stored on the server.
-4. Confirm the other device converges to the same state within about 5 seconds.
-5. `/api/health` should report version `2.3.3`.
+## Mobile Grocery
+Open `/grocery/` on iPhone. Use **SHOPPING LIST** while shopping and **ALL ITEMS** to browse/manage the family master list.
 
+## Deploy
+Replace/add the files from this package in the existing GitHub repository and deploy normally through Cloudflare.
 
-## V2.3.3
-- Adds a removal tombstone / awaiting-confirmation layer so stale polling snapshots cannot resurrect an item after it is unchecked.
-- Keeps optimistic UI and latest-intention-wins behavior.
+Health check: `/api/health` should report version `2.4`.
