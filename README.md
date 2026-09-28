@@ -1,29 +1,27 @@
-# Family Dashboard V2.5 — Finance Core
+# Family Dashboard V2.6 — Finances for iPhone
 
-V2.5 adds a provider-independent financial foundation to the existing Family Hub.
+V2.6 builds the first full mobile finance experience on top of the provider-independent Finance Core introduced in V2.5.
 
-## New finance model
-- Accounts and cards
-- Family transactions: income, expense, transfer
-- Categories and custom categories
-- Monthly and category budgets
-- Categorization rules table
-- Provider/source + external ID for deduplication
-- Normalized JSON batch import endpoint for future CSV/OFX/Open Finance adapters
-- Family ownership model, while retaining technical owner metadata for consent/reconciliation
+## New mobile app
+Open `/finances/` on iPhone. It includes:
+- Overview: income, expenses, balance, budget usage, spending by category
+- Transactions: search, add, edit and delete manual transactions
+- Budgets: family monthly budget and category management
+- Accounts: family accounts/cards with technical consent-owner metadata
+- Add to Home Screen support with a dedicated icon and web manifest
 
-## New endpoints
-- `GET /api/finance/summary?month=YYYY-MM`
-- `GET|POST /api/finance/transactions`
-- `GET|POST /api/finance/categories`
-- `GET|POST /api/finance/accounts`
-- `GET|POST /api/finance/budgets`
-- `POST /api/finance/import`
+## Finance philosophy
+The UI is Family-wide. `owner` exists only as technical metadata for future Open Finance consent management. Internal transfers are supported as a distinct transaction type and do not count as family income or expense.
 
-The first request to a finance endpoint creates the D1 tables and seeds default categories. No bank credentials or financial data are stored in GitHub.
+## API additions
+V2.6 adds transaction update support to `/api/finance/transactions` while retaining all V2.5 endpoints.
 
-## iPad
-Tasks and Meals are removed from the sidebar for now. Finances is added as a read-only wall dashboard. Until transactions are imported, it intentionally shows an empty Finance Core state rather than fake values.
+## Deploy
+Replace/add:
+- `public/finances/index.html`
+- `public/finances/manifest.webmanifest`
+- `public/finances/apple-touch-icon.png`
+- `src/index.js`
+- `README.md`
 
-## Next
-V2.6 will add the full iPhone `/finances/` experience and import UI. Open Finance will remain a replaceable provider adapter, not the source of truth.
+No new Cloudflare secrets or bindings are required.

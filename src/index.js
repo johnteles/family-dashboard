@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.5' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.6' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -135,7 +135,7 @@ export default {
         `).bind(start,end).all();
         const budget = await env.DB.prepare("SELECT amount FROM finance_budgets WHERE month = ? AND category_id IS NULL").bind(month).first();
         const income = Number(totals && totals.income || 0), expenses = Number(totals && totals.expenses || 0);
-        return json({ ok:true, version:'2.5', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
+        return json({ ok:true, version:'2.6', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
       }
 
       if (url.pathname === '/api/finance/transactions') {
@@ -151,7 +151,7 @@ export default {
             WHERE t.transaction_date >= ? AND t.transaction_date < ?
             ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1000
           `).bind(from,to).all();
-          return json({ok:true,version:'2.5',transactions:rows.results||[]});
+          return json({ok:true,version:'2.6',transactions:rows.results||[]});
         }
         if (request.method === 'POST') {
           let body; try { body=await request.json(); } catch(e){ return json({ok:false,error:'Invalid JSON.'},400); }
@@ -160,6 +160,15 @@ export default {
             const id=Number(body.id); if(!id) return json({ok:false,error:'Transaction id is required.'},400);
             await env.DB.prepare('DELETE FROM finance_transactions WHERE id=?').bind(id).run();
             return json({ok:true,deleted:id});
+          }
+          if (action === 'update') {
+            const id=Number(body.id); if(!id) return json({ok:false,error:'Transaction id is required.'},400);
+            const date=validDate(body.date), desc=String(body.description||'').trim(), amount=Number(body.amount), type=String(body.type||'').toLowerCase();
+            if(!date||!desc||!Number.isFinite(amount)||amount<0||!['income','expense','transfer'].includes(type)) return json({ok:false,error:'date, description, non-negative amount and valid type are required.'},400);
+            const categoryId=body.categoryId?Number(body.categoryId):null, accountId=body.accountId?Number(body.accountId):null;
+            const notes=body.notes?String(body.notes):null;
+            await env.DB.prepare("UPDATE finance_transactions SET transaction_date=?,description=?,amount=?,type=?,category_id=?,account_id=?,notes=?,updated_at=datetime('now') WHERE id=?").bind(date,desc,amount,type,categoryId,accountId,notes,id).run();
+            return json({ok:true,id});
           }
           if (action === 'create') {
             const date=validDate(body.date), desc=String(body.description||'').trim(), amount=Number(body.amount), type=String(body.type||'').toLowerCase();
