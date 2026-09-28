@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.4.2' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.5' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -68,7 +68,7 @@ export default {
       await ensureGrocerySchema(env.DB);
       if (request.method === 'GET') {
         const rows = await env.DB.prepare('SELECT id, category, name, sort_order, needed, updated_at FROM grocery_items ORDER BY category_order, sort_order, name').all();
-        return json({ ok: true, version: '2.4.2', items: rows.results || [] });
+        return json({ ok: true, version: '2.5', items: rows.results || [] });
       }
       if (request.method === 'POST') {
         let body;
@@ -110,6 +110,101 @@ export default {
       return json({ ok: false, error: 'Method not allowed.' }, 405);
     }
 
+
+    if (url.pathname.indexOf('/api/finance') === 0) {
+      if (!env.DB) return json({ ok: false, configured: false, error: 'D1 binding DB is missing.' }, 503);
+      await ensureFinanceSchema(env.DB);
+
+      if (url.pathname === '/api/finance/summary' && request.method === 'GET') {
+        const month = validMonth(url.searchParams.get('month')) || currentMonthKey();
+        const start = month + '-01';
+        const end = nextMonthKey(month) + '-01';
+        const totals = await env.DB.prepare(`
+          SELECT
+            COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) AS income,
+            COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expenses
+          FROM finance_transactions
+          WHERE transaction_date >= ? AND transaction_date < ? AND excluded = 0
+        `).bind(start,end).first();
+        const cats = await env.DB.prepare(`
+          SELECT COALESCE(c.name,'Uncategorized') AS category, SUM(t.amount) AS amount
+          FROM finance_transactions t
+          LEFT JOIN finance_categories c ON c.id=t.category_id
+          WHERE t.transaction_date >= ? AND t.transaction_date < ? AND t.type='expense' AND t.excluded=0
+          GROUP BY COALESCE(c.name,'Uncategorized') ORDER BY amount DESC
+        `).bind(start,end).all();
+        const budget = await env.DB.prepare("SELECT amount FROM finance_budgets WHERE month = ? AND category_id IS NULL").bind(month).first();
+        const income = Number(totals && totals.income || 0), expenses = Number(totals && totals.expenses || 0);
+        return json({ ok:true, version:'2.5', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
+      }
+
+      if (url.pathname === '/api/finance/transactions') {
+        if (request.method === 'GET') {
+          const from = validDate(url.searchParams.get('from')) || currentMonthKey()+'-01';
+          const to = validDate(url.searchParams.get('to')) || nextMonthKey(currentMonthKey())+'-01';
+          const rows = await env.DB.prepare(`
+            SELECT t.id,t.transaction_date,t.description,t.amount,t.type,t.owner,t.source,t.external_id,t.notes,t.excluded,
+                   c.name AS category,a.name AS account,a.institution
+            FROM finance_transactions t
+            LEFT JOIN finance_categories c ON c.id=t.category_id
+            LEFT JOIN finance_accounts a ON a.id=t.account_id
+            WHERE t.transaction_date >= ? AND t.transaction_date < ?
+            ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1000
+          `).bind(from,to).all();
+          return json({ok:true,version:'2.5',transactions:rows.results||[]});
+        }
+        if (request.method === 'POST') {
+          let body; try { body=await request.json(); } catch(e){ return json({ok:false,error:'Invalid JSON.'},400); }
+          const action=String(body.action||'create');
+          if (action === 'delete') {
+            const id=Number(body.id); if(!id) return json({ok:false,error:'Transaction id is required.'},400);
+            await env.DB.prepare('DELETE FROM finance_transactions WHERE id=?').bind(id).run();
+            return json({ok:true,deleted:id});
+          }
+          if (action === 'create') {
+            const date=validDate(body.date), desc=String(body.description||'').trim(), amount=Number(body.amount), type=String(body.type||'').toLowerCase();
+            if(!date||!desc||!Number.isFinite(amount)||amount<0||!['income','expense','transfer'].includes(type)) return json({ok:false,error:'date, description, non-negative amount and valid type are required.'},400);
+            const categoryId=body.categoryId?Number(body.categoryId):null, accountId=body.accountId?Number(body.accountId):null;
+            const owner=String(body.owner||'Family'), source=String(body.source||'manual'), externalId=body.externalId?String(body.externalId):null, notes=body.notes?String(body.notes):null;
+            if(externalId){ const dup=await env.DB.prepare('SELECT id FROM finance_transactions WHERE source=? AND external_id=?').bind(source,externalId).first(); if(dup) return json({ok:false,error:'Duplicate transaction.',duplicateId:dup.id},409); }
+            const r=await env.DB.prepare("INSERT INTO finance_transactions (transaction_date,description,amount,type,category_id,account_id,owner,source,external_id,notes,excluded,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,datetime('now'),datetime('now'))").bind(date,desc,amount,type,categoryId,accountId,owner,source,externalId,notes).run();
+            return json({ok:true,id:r.meta && r.meta.last_row_id},201);
+          }
+          return json({ok:false,error:'Unsupported action.'},400);
+        }
+      }
+
+      if (url.pathname === '/api/finance/categories') {
+        if(request.method==='GET'){ const rows=await env.DB.prepare('SELECT id,name,type,sort_order,active FROM finance_categories WHERE active=1 ORDER BY sort_order,name').all(); return json({ok:true,categories:rows.results||[]}); }
+        if(request.method==='POST'){ let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)} const name=String(body.name||'').trim(),type=String(body.type||'expense').toLowerCase(); if(!name||!['income','expense'].includes(type))return json({ok:false,error:'Valid name and type are required.'},400); const dup=await env.DB.prepare('SELECT id FROM finance_categories WHERE lower(name)=lower(?) AND type=?').bind(name,type).first(); if(dup)return json({ok:false,error:'Category already exists.',duplicateId:dup.id},409); const max=await env.DB.prepare('SELECT COALESCE(MAX(sort_order),0) n FROM finance_categories WHERE type=?').bind(type).first(); const r=await env.DB.prepare("INSERT INTO finance_categories(name,type,sort_order,active) VALUES(?,?,?,1)").bind(name,type,Number(max&&max.n||0)+1).run(); return json({ok:true,id:r.meta&&r.meta.last_row_id},201); }
+      }
+
+      if (url.pathname === '/api/finance/accounts') {
+        if(request.method==='GET'){ const rows=await env.DB.prepare('SELECT id,name,institution,kind,owner,active FROM finance_accounts WHERE active=1 ORDER BY institution,name').all(); return json({ok:true,accounts:rows.results||[]}); }
+        if(request.method==='POST'){ let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)} const name=String(body.name||'').trim(),institution=String(body.institution||'').trim(),kind=String(body.kind||'checking').trim(),owner=String(body.owner||'Family').trim(); if(!name)return json({ok:false,error:'Account name is required.'},400); const r=await env.DB.prepare('INSERT INTO finance_accounts(name,institution,kind,owner,active) VALUES(?,?,?,?,1)').bind(name,institution,kind,owner).run(); return json({ok:true,id:r.meta&&r.meta.last_row_id},201); }
+      }
+
+      if (url.pathname === '/api/finance/budgets') {
+        if(request.method==='GET'){ const month=validMonth(url.searchParams.get('month'))||currentMonthKey(); const rows=await env.DB.prepare('SELECT b.id,b.month,b.amount,b.category_id,c.name category FROM finance_budgets b LEFT JOIN finance_categories c ON c.id=b.category_id WHERE b.month=? ORDER BY c.name').bind(month).all(); return json({ok:true,month,budgets:rows.results||[]}); }
+        if(request.method==='POST'){ let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)} const month=validMonth(body.month),amount=Number(body.amount),categoryId=body.categoryId?Number(body.categoryId):null; if(!month||!Number.isFinite(amount)||amount<0)return json({ok:false,error:'Valid month and amount are required.'},400); if(categoryId){await env.DB.prepare('INSERT INTO finance_budgets(month,category_id,amount) VALUES(?,?,?) ON CONFLICT(month,category_id) DO UPDATE SET amount=excluded.amount').bind(month,categoryId,amount).run()}else{await env.DB.prepare('DELETE FROM finance_budgets WHERE month=? AND category_id IS NULL').bind(month).run();await env.DB.prepare('INSERT INTO finance_budgets(month,category_id,amount) VALUES(?,NULL,?)').bind(month,amount).run()} return json({ok:true}); }
+      }
+
+      if (url.pathname === '/api/finance/import' && request.method === 'POST') {
+        let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)}
+        const rows=Array.isArray(body.transactions)?body.transactions:[]; if(!rows.length)return json({ok:false,error:'transactions array is required.'},400);
+        let imported=0,duplicates=0,rejected=0;
+        for(const row of rows.slice(0,1000)){
+          const date=validDate(row.date),desc=String(row.description||'').trim(),amount=Number(row.amount),type=String(row.type||'expense').toLowerCase(),source=String(row.source||body.source||'import'),externalId=row.externalId?String(row.externalId):null;
+          if(!date||!desc||!Number.isFinite(amount)||amount<0||!['income','expense','transfer'].includes(type)){rejected++;continue}
+          if(externalId){const dup=await env.DB.prepare('SELECT id FROM finance_transactions WHERE source=? AND external_id=?').bind(source,externalId).first();if(dup){duplicates++;continue}}
+          await env.DB.prepare("INSERT INTO finance_transactions(transaction_date,description,amount,type,owner,source,external_id,excluded,created_at,updated_at) VALUES(?,?,?,?,?,?,?,0,datetime('now'),datetime('now'))").bind(date,desc,amount,type,String(row.owner||'Family'),source,externalId).run();imported++;
+        }
+        return json({ok:true,imported,duplicates,rejected});
+      }
+
+      return json({ok:false,error:'Finance endpoint not found.'},404);
+    }
+
     if (url.pathname === '/api/calendar') {
       if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) return json({ ok: false, configured: false }, 503);
       const accessToken = await getGoogleAccessToken(env);
@@ -144,7 +239,7 @@ export default {
       }));
 
       const events = results.flat().sort((a, b) => String(a.start).localeCompare(String(b.start)));
-      return json({ ok: true, configured: true, version: '2.4.2', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
+      return json({ ok: true, configured: true, version: '2.5', rangeStart: start.toISOString(), rangeEnd: end.toISOString(), calendarsFound: calendars.map((c) => c.name), expectedCalendars: FAMILY_CALENDARS, events });
     }
 
     return env.ASSETS.fetch(request);
@@ -165,6 +260,32 @@ async function ensureGrocerySchema(db) {
   for (const row of seed) statements.push(db.prepare('INSERT OR IGNORE INTO grocery_items (category, category_order, name, sort_order) VALUES (?, ?, ?, ?)').bind(row[0], row[1], row[2], row[3]));
   await db.batch(statements);
 }
+
+
+async function ensureFinanceSchema(db) {
+  await db.batch([
+    db.prepare("CREATE TABLE IF NOT EXISTS finance_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('income','expense')), sort_order INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, UNIQUE(name,type))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS finance_accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, institution TEXT, kind TEXT NOT NULL DEFAULT 'checking', owner TEXT NOT NULL DEFAULT 'Family', active INTEGER NOT NULL DEFAULT 1)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS finance_transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, transaction_date TEXT NOT NULL, description TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, type TEXT NOT NULL CHECK(type IN ('income','expense','transfer')), category_id INTEGER, account_id INTEGER, owner TEXT NOT NULL DEFAULT 'Family', source TEXT NOT NULL DEFAULT 'manual', external_id TEXT, notes TEXT, excluded INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), FOREIGN KEY(category_id) REFERENCES finance_categories(id), FOREIGN KEY(account_id) REFERENCES finance_accounts(id))"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_external ON finance_transactions(source,external_id) WHERE external_id IS NOT NULL"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_finance_date ON finance_transactions(transaction_date)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS finance_budgets (id INTEGER PRIMARY KEY AUTOINCREMENT, month TEXT NOT NULL, category_id INTEGER, amount REAL NOT NULL DEFAULT 0, FOREIGN KEY(category_id) REFERENCES finance_categories(id))"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_budget_category ON finance_budgets(month,category_id) WHERE category_id IS NOT NULL"),
+    db.prepare("CREATE TABLE IF NOT EXISTS finance_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, match_type TEXT NOT NULL DEFAULT 'contains', pattern TEXT NOT NULL, category_id INTEGER NOT NULL, priority INTEGER NOT NULL DEFAULT 100, active INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(category_id) REFERENCES finance_categories(id))")
+  ]);
+  const count=await db.prepare('SELECT COUNT(*) count FROM finance_categories').first();
+  if(count && Number(count.count)>0)return;
+  const expense=['Home','Groceries','Restaurants','Kids','Transportation','Health','Education','Entertainment','Travel','Shopping','Subscriptions','Other'];
+  const income=['Salary','Bonus','Other Income'];
+  const stmts=[]; let i=1;
+  for(const name of expense)stmts.push(db.prepare("INSERT OR IGNORE INTO finance_categories(name,type,sort_order,active) VALUES(?,'expense',?,1)").bind(name,i++));
+  i=1;for(const name of income)stmts.push(db.prepare("INSERT OR IGNORE INTO finance_categories(name,type,sort_order,active) VALUES(?,'income',?,1)").bind(name,i++));
+  await db.batch(stmts);
+}
+function validDate(v){return /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v||''))?String(v):null}
+function validMonth(v){return /^\\d{4}-\\d{2}$/.test(String(v||''))?String(v):null}
+function currentMonthKey(){const d=new Date();return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')}
+function nextMonthKey(m){const p=m.split('-');const d=new Date(Date.UTC(Number(p[0]),Number(p[1]),1));return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')}
 
 async function getGoogleAccessToken(env) {
   const body = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: env.GOOGLE_REFRESH_TOKEN, grant_type: 'refresh_token' });
