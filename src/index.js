@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.6.1' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.7' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -135,7 +135,7 @@ export default {
         `).bind(start,end).all();
         const budget = await env.DB.prepare("SELECT amount FROM finance_budgets WHERE month = ? AND category_id IS NULL").bind(month).first();
         const income = Number(totals && totals.income || 0), expenses = Number(totals && totals.expenses || 0);
-        return json({ ok:true, version:'2.6.1', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
+        return json({ ok:true, version:'2.7', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
       }
 
       if (url.pathname === '/api/finance/transactions') {
@@ -144,6 +144,7 @@ export default {
           const to = validDate(url.searchParams.get('to')) || nextMonthKey(currentMonthKey())+'-01';
           const rows = await env.DB.prepare(`
             SELECT t.id,t.transaction_date,t.description,t.amount,t.type,t.owner,t.source,t.external_id,t.notes,t.excluded,
+                   t.original_description,t.provider_category,t.review_status,t.classification_source,t.subcategory,
                    c.name AS category,a.name AS account,a.institution
             FROM finance_transactions t
             LEFT JOIN finance_categories c ON c.id=t.category_id
@@ -151,7 +152,7 @@ export default {
             WHERE t.transaction_date >= ? AND t.transaction_date < ?
             ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1000
           `).bind(from,to).all();
-          return json({ok:true,version:'2.6.1',transactions:rows.results||[]});
+          return json({ok:true,version:'2.7',transactions:rows.results||[]});
         }
         if (request.method === 'POST') {
           let body; try { body=await request.json(); } catch(e){ return json({ok:false,error:'Invalid JSON.'},400); }
@@ -167,7 +168,7 @@ export default {
             if(!date||!desc||!Number.isFinite(amount)||amount<0||!['income','expense','transfer'].includes(type)) return json({ok:false,error:'date, description, non-negative amount and valid type are required.'},400);
             const categoryId=body.categoryId?Number(body.categoryId):null, accountId=body.accountId?Number(body.accountId):null;
             const notes=body.notes?String(body.notes):null;
-            await env.DB.prepare("UPDATE finance_transactions SET transaction_date=?,description=?,amount=?,type=?,category_id=?,account_id=?,notes=?,updated_at=datetime('now') WHERE id=?").bind(date,desc,amount,type,categoryId,accountId,notes,id).run();
+            const reviewStatus=String(body.reviewStatus||'reviewed'), subcategory=body.subcategory?String(body.subcategory):null; await env.DB.prepare("UPDATE finance_transactions SET transaction_date=?,description=?,amount=?,type=?,category_id=?,account_id=?,notes=?,review_status=?,classification_source='manual',subcategory=?,updated_at=datetime('now') WHERE id=?").bind(date,desc,amount,type,categoryId,accountId,notes,reviewStatus,subcategory,id).run();
             return json({ok:true,id});
           }
           if (action === 'create') {
@@ -176,7 +177,7 @@ export default {
             const categoryId=body.categoryId?Number(body.categoryId):null, accountId=body.accountId?Number(body.accountId):null;
             const owner=String(body.owner||'Family'), source=String(body.source||'manual'), externalId=body.externalId?String(body.externalId):null, notes=body.notes?String(body.notes):null;
             if(externalId){ const dup=await env.DB.prepare('SELECT id FROM finance_transactions WHERE source=? AND external_id=?').bind(source,externalId).first(); if(dup) return json({ok:false,error:'Duplicate transaction.',duplicateId:dup.id},409); }
-            const r=await env.DB.prepare("INSERT INTO finance_transactions (transaction_date,description,amount,type,category_id,account_id,owner,source,external_id,notes,excluded,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,datetime('now'),datetime('now'))").bind(date,desc,amount,type,categoryId,accountId,owner,source,externalId,notes).run();
+            const r=await env.DB.prepare("INSERT INTO finance_transactions (transaction_date,description,amount,type,category_id,account_id,owner,source,external_id,notes,excluded,original_description,review_status,classification_source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,?,'reviewed','manual',datetime('now'),datetime('now'))").bind(date,desc,amount,type,categoryId,accountId,owner,source,externalId,notes,desc).run();
             return json({ok:true,id:r.meta && r.meta.last_row_id},201);
           }
           return json({ok:false,error:'Unsupported action.'},400);
@@ -198,6 +199,16 @@ export default {
         if(request.method==='POST'){ let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)} const month=validMonth(body.month),amount=Number(body.amount),categoryId=body.categoryId?Number(body.categoryId):null; if(!month||!Number.isFinite(amount)||amount<0)return json({ok:false,error:'Valid month and amount are required.'},400); if(categoryId){await env.DB.prepare('INSERT INTO finance_budgets(month,category_id,amount) VALUES(?,?,?) ON CONFLICT(month,category_id) DO UPDATE SET amount=excluded.amount').bind(month,categoryId,amount).run()}else{await env.DB.prepare('DELETE FROM finance_budgets WHERE month=? AND category_id IS NULL').bind(month).run();await env.DB.prepare('INSERT INTO finance_budgets(month,category_id,amount) VALUES(?,NULL,?)').bind(month,amount).run()} return json({ok:true}); }
       }
 
+      if (url.pathname === '/api/finance/bills') {
+        if(request.method==='GET'){ const rows=await env.DB.prepare("SELECT b.id,b.name,b.amount,b.due_date,b.category_id,b.recurrence,b.status,b.notes,b.matched_transaction_id,c.name category FROM finance_bills b LEFT JOIN finance_categories c ON c.id=b.category_id ORDER BY CASE b.status WHEN 'overdue' THEN 0 WHEN 'upcoming' THEN 1 ELSE 2 END,b.due_date").all(); return json({ok:true,bills:rows.results||[]}); }
+        if(request.method==='POST'){ let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)} const action=String(body.action||'create'); if(action==='delete'){const id=Number(body.id);if(!id)return json({ok:false,error:'Bill id is required.'},400);await env.DB.prepare('DELETE FROM finance_bills WHERE id=?').bind(id).run();return json({ok:true,deleted:id});} const name=String(body.name||'').trim(),amount=Number(body.amount),due=validDate(body.dueDate),categoryId=body.categoryId?Number(body.categoryId):null,recurrence=String(body.recurrence||'none'),status=String(body.status||'upcoming'),notes=body.notes?String(body.notes):null; if(!name||!Number.isFinite(amount)||amount<0||!due||!['none','monthly','yearly'].includes(recurrence)||!['upcoming','paid','overdue'].includes(status))return json({ok:false,error:'Valid bill data is required.'},400); if(action==='update'){const id=Number(body.id);if(!id)return json({ok:false,error:'Bill id is required.'},400);await env.DB.prepare("UPDATE finance_bills SET name=?,amount=?,due_date=?,category_id=?,recurrence=?,status=?,notes=?,updated_at=datetime('now') WHERE id=?").bind(name,amount,due,categoryId,recurrence,status,notes,id).run();return json({ok:true,id});} const r=await env.DB.prepare("INSERT INTO finance_bills(name,amount,due_date,category_id,recurrence,status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,datetime('now'),datetime('now'))").bind(name,amount,due,categoryId,recurrence,status,notes).run();return json({ok:true,id:r.meta&&r.meta.last_row_id},201); }
+      }
+
+      if (url.pathname === '/api/finance/rules') {
+        if(request.method==='GET'){const rows=await env.DB.prepare('SELECT r.id,r.match_type,r.pattern,r.category_id,r.priority,r.active,c.name category FROM finance_rules r LEFT JOIN finance_categories c ON c.id=r.category_id WHERE r.active=1 ORDER BY r.priority,r.id').all();return json({ok:true,rules:rows.results||[]});}
+        if(request.method==='POST'){let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)} const pattern=String(body.pattern||'').trim(),categoryId=Number(body.categoryId),matchType=String(body.matchType||'contains');if(!pattern||!categoryId)return json({ok:false,error:'Pattern and category are required.'},400);const r=await env.DB.prepare('INSERT INTO finance_rules(match_type,pattern,category_id,priority,active) VALUES(?,?,?,100,1)').bind(matchType,pattern,categoryId).run();return json({ok:true,id:r.meta&&r.meta.last_row_id},201);}
+      }
+
       if (url.pathname === '/api/finance/import' && request.method === 'POST') {
         let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)}
         const rows=Array.isArray(body.transactions)?body.transactions:[]; if(!rows.length)return json({ok:false,error:'transactions array is required.'},400);
@@ -206,7 +217,7 @@ export default {
           const date=validDate(row.date),desc=String(row.description||'').trim(),amount=Number(row.amount),type=String(row.type||'expense').toLowerCase(),source=String(row.source||body.source||'import'),externalId=row.externalId?String(row.externalId):null;
           if(!date||!desc||!Number.isFinite(amount)||amount<0||!['income','expense','transfer'].includes(type)){rejected++;continue}
           if(externalId){const dup=await env.DB.prepare('SELECT id FROM finance_transactions WHERE source=? AND external_id=?').bind(source,externalId).first();if(dup){duplicates++;continue}}
-          await env.DB.prepare("INSERT INTO finance_transactions(transaction_date,description,amount,type,owner,source,external_id,excluded,created_at,updated_at) VALUES(?,?,?,?,?,?,?,0,datetime('now'),datetime('now'))").bind(date,desc,amount,type,String(row.owner||'Family'),source,externalId).run();imported++;
+          const catName=row.category?String(row.category):null; let categoryId=null; if(catName){const cat=await env.DB.prepare('SELECT id FROM finance_categories WHERE lower(name)=lower(?) AND type=?').bind(catName,type==='income'?'income':'expense').first(); categoryId=cat?cat.id:null;} const reviewStatus=String(row.reviewStatus||'needs_review'), classSource=String(row.classificationSource||'import'); await env.DB.prepare("INSERT INTO finance_transactions(transaction_date,description,amount,type,category_id,owner,source,external_id,excluded,original_description,provider_category,review_status,classification_source,subcategory,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,datetime('now'),datetime('now'))").bind(date,desc,amount,type,categoryId,String(row.owner||'Family'),source,externalId,String(row.originalDescription||desc),row.providerCategory?String(row.providerCategory):null,reviewStatus,classSource,row.subcategory?String(row.subcategory):null,row.notes?String(row.notes):null).run();imported++;
         }
         return json({ok:true,imported,duplicates,rejected});
       }
@@ -280,11 +291,21 @@ async function ensureFinanceSchema(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_finance_date ON finance_transactions(transaction_date)"),
     db.prepare("CREATE TABLE IF NOT EXISTS finance_budgets (id INTEGER PRIMARY KEY AUTOINCREMENT, month TEXT NOT NULL, category_id INTEGER, amount REAL NOT NULL DEFAULT 0, FOREIGN KEY(category_id) REFERENCES finance_categories(id))"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_budget_category ON finance_budgets(month,category_id) WHERE category_id IS NOT NULL"),
-    db.prepare("CREATE TABLE IF NOT EXISTS finance_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, match_type TEXT NOT NULL DEFAULT 'contains', pattern TEXT NOT NULL, category_id INTEGER NOT NULL, priority INTEGER NOT NULL DEFAULT 100, active INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(category_id) REFERENCES finance_categories(id))")
+    db.prepare("CREATE TABLE IF NOT EXISTS finance_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, match_type TEXT NOT NULL DEFAULT 'contains', pattern TEXT NOT NULL, category_id INTEGER NOT NULL, priority INTEGER NOT NULL DEFAULT 100, active INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(category_id) REFERENCES finance_categories(id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS finance_bills (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, due_date TEXT NOT NULL, category_id INTEGER, recurrence TEXT NOT NULL DEFAULT 'none', status TEXT NOT NULL DEFAULT 'upcoming', notes TEXT, matched_transaction_id INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), FOREIGN KEY(category_id) REFERENCES finance_categories(id), FOREIGN KEY(matched_transaction_id) REFERENCES finance_transactions(id))")
   ]);
+  const cols=await db.prepare('PRAGMA table_info(finance_transactions)').all();
+  const have={}; for(const c of (cols.results||[])) have[c.name]=1;
+  const alters=[];
+  if(!have.original_description) alters.push("ALTER TABLE finance_transactions ADD COLUMN original_description TEXT");
+  if(!have.provider_category) alters.push("ALTER TABLE finance_transactions ADD COLUMN provider_category TEXT");
+  if(!have.review_status) alters.push("ALTER TABLE finance_transactions ADD COLUMN review_status TEXT NOT NULL DEFAULT 'needs_review'");
+  if(!have.classification_source) alters.push("ALTER TABLE finance_transactions ADD COLUMN classification_source TEXT NOT NULL DEFAULT 'manual'");
+  if(!have.subcategory) alters.push("ALTER TABLE finance_transactions ADD COLUMN subcategory TEXT");
+  for(const sql of alters) await db.prepare(sql).run();
   const count=await db.prepare('SELECT COUNT(*) count FROM finance_categories').first();
   if(count && Number(count.count)>0)return;
-  const expense=['Home','Groceries','Restaurants','Kids','Transportation','Health','Education','Entertainment','Travel','Shopping','Subscriptions','Other'];
+  const expense=['Housing','Home','Utilities','Groceries','Restaurants','Kids','Transportation','Health','Personal Care','Education','Entertainment','Travel','Shopping','Subscriptions','Taxes & Fees','Other'];
   const income=['Salary','Bonus','Other Income'];
   const stmts=[]; let i=1;
   for(const name of expense)stmts.push(db.prepare("INSERT OR IGNORE INTO finance_categories(name,type,sort_order,active) VALUES(?,'expense',?,1)").bind(name,i++));
