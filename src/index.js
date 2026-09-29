@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.7' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.7.1' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -135,7 +135,7 @@ export default {
         `).bind(start,end).all();
         const budget = await env.DB.prepare("SELECT amount FROM finance_budgets WHERE month = ? AND category_id IS NULL").bind(month).first();
         const income = Number(totals && totals.income || 0), expenses = Number(totals && totals.expenses || 0);
-        return json({ ok:true, version:'2.7', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
+        return json({ ok:true, version:'2.7.1', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
       }
 
       if (url.pathname === '/api/finance/transactions') {
@@ -152,7 +152,7 @@ export default {
             WHERE t.transaction_date >= ? AND t.transaction_date < ?
             ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1000
           `).bind(from,to).all();
-          return json({ok:true,version:'2.7',transactions:rows.results||[]});
+          return json({ok:true,version:'2.7.1',transactions:rows.results||[]});
         }
         if (request.method === 'POST') {
           let body; try { body=await request.json(); } catch(e){ return json({ok:false,error:'Invalid JSON.'},400); }
