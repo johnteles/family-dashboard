@@ -1,6 +1,6 @@
-# Family Dashboard V2.6 — Finances for iPhone
+# Family Dashboard V2.6.1 — Finances for iPhone
 
-V2.6 builds the first full mobile finance experience on top of the provider-independent Finance Core introduced in V2.5.
+V2.6.1 builds the first full mobile finance experience on top of the provider-independent Finance Core introduced in V2.5.
 
 ## New mobile app
 Open `/finances/` on iPhone. It includes:
@@ -14,7 +14,7 @@ Open `/finances/` on iPhone. It includes:
 The UI is Family-wide. `owner` exists only as technical metadata for future Open Finance consent management. Internal transfers are supported as a distinct transaction type and do not count as family income or expense.
 
 ## API additions
-V2.6 adds transaction update support to `/api/finance/transactions` while retaining all V2.5 endpoints.
+V2.6.1 adds transaction update support to `/api/finance/transactions` while retaining all V2.5 endpoints.
 
 ## Deploy
 Replace/add:
@@ -25,3 +25,9 @@ Replace/add:
 - `README.md`
 
 No new Cloudflare secrets or bindings are required.
+
+
+## V2.6.1 compatibility fix
+- Legacy-safe month handling for older Safari/iOS.
+- Removed String.padStart dependency.
+- Added visible startup error fallback instead of a blank screen.
