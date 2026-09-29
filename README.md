@@ -1,8 +1,8 @@
-# Family Dashboard V2.7.1
+# Family Dashboard V2.7.2
 
 ## Finance UX & Performance
 
-V2.7.1 keeps the V2.7 Finance Core and adds a responsive mobile finance navigation plus stale-while-revalidate caching.
+V2.7.2 keeps the V2.7 Finance Core and adds a responsive mobile finance navigation plus stale-while-revalidate caching.
 
 ### Improvements
 - compact icon-first Finances navigation for iPhone
@@ -21,3 +21,11 @@ Replace:
 - `README.md`
 
 Existing Grocery, Calendar, Bills, Finance data, D1 bindings, Google OAuth and secrets remain unchanged.
+
+
+## V2.7.2 - Mobile Form Polish
+- Prevents horizontal modal drift on iPhone.
+- Constrains all finance form controls to the viewport.
+- Compacts date fields and vertical spacing.
+- Keeps modal actions accessible while scrolling.
+- Applies the same modal sizing rules across Transactions, Bills, Budgets, Categories, and Accounts.
