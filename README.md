@@ -1,31 +1,20 @@
-# Family Dashboard V2.7.2
+# Family Dashboard V2.8
 
-## Finance UX & Performance
+Historical Finance Import & Review Queue.
 
-V2.7.2 keeps the V2.7 Finance Core and adds a responsive mobile finance navigation plus stale-while-revalidate caching.
+## New
+- Secure local JSON import from the Finances > Activity screen.
+- Historical data is selected from the device and POSTed directly to the protected Worker; it is not stored in public assets or GitHub.
+- NEEDS REVIEW filter for imported/ambiguous transactions.
+- Data coverage notice: bank-account statements do not include the underlying credit-card purchases. Card settlements remain transfers to avoid double counting.
+- Existing transaction editing can mark imported items as reviewed and optionally create categorization rules.
 
-### Improvements
-- compact icon-first Finances navigation for iPhone
-- cached Finance snapshot renders immediately on iPhone
-- D1 refresh runs silently in the background
-- switching Finance tabs never triggers a network request
-- changing month renders any cached month immediately, then refreshes
-- wall iPad Finances renders its last known summary immediately, then refreshes silently
-- no schema or D1 migration changes from V2.7
+## Import
+1. Deploy V2.8.
+2. Open /finances/ > Activity.
+3. Tap IMPORT HISTORY.
+4. Select the provided family_finance_history_may_aug_2026.json file from Files.
+5. Confirm import. Re-importing is safe: source + externalId duplicates are skipped.
+6. Use NEEDS REVIEW to work through ambiguous items.
 
-### Upgrade
-Replace:
-- `public/finances/index.html`
-- `public/index.html`
-- `src/index.js`
-- `README.md`
-
-Existing Grocery, Calendar, Bills, Finance data, D1 bindings, Google OAuth and secrets remain unchanged.
-
-
-## V2.7.2 - Mobile Form Polish
-- Prevents horizontal modal drift on iPhone.
-- Constrains all finance form controls to the viewport.
-- Compacts date fields and vertical spacing.
-- Keeps modal actions accessible while scrolling.
-- Applies the same modal sizing rules across Transactions, Bills, Budgets, Categories, and Accounts.
+Never commit the history JSON or bank statements to the public GitHub repository.
