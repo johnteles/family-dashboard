@@ -1,27 +1,28 @@
-# Family Dashboard V2.8.1.1
+# Family Dashboard V2.9 - Credit Card Intelligence
 
-Historical Finance Import & Review Queue.
+V2.9 extends the Finance Core to consolidate bank statements and detailed credit-card statements without double counting.
 
-## New
-- Secure local JSON import from the Finances > Activity screen.
-- Historical data is selected from the device and POSTed directly to the protected Worker; it is not stored in public assets or GitHub.
-- NEEDS REVIEW filter for imported/ambiguous transactions.
-- Data coverage notice: bank-account statements do not include the underlying credit-card purchases. Card settlements remain transfers to avoid double counting.
-- Existing transaction editing can mark imported items as reviewed and optionally create categorization rules.
+## New in V2.9
+- Finance transaction Context: `Family` or `3D Printing`
+- Account kind supports `credit_card`; Santander Mastercard is seeded automatically
+- Transaction kinds: purchase, refund/credit, credit-card payment, transfer
+- Installment metadata (`current / total`)
+- Merchant metadata separate from category
+- Activity filters: All / Family / 3D Printing
+- Overview cards for Family Expenses and 3D Printing expenses
+- Credit-card payments remain Transfers; detailed card purchases are Expenses
+- Refunds reduce expense totals
+- Import resolves/creates accounts by name so historical JSON does not depend on D1 numeric IDs
 
-## Import
-1. Deploy V2.8.1.1.
-2. Open /finances/ > Activity.
-3. Tap IMPORT HISTORY.
-4. Select the provided family_finance_history_may_aug_2026.json file from Files.
-5. Confirm import. Re-importing is safe: source + externalId duplicates are skipped.
-6. Use NEEDS REVIEW to work through ambiguous items.
+## Historical import
+Use `family_finance_consolidated_v2_9.json` from the iPhone Finance Activity > Import History flow. Do not commit this personal financial JSON to GitHub.
 
-Never commit the history JSON or bank statements to the public GitHub repository.
+The consolidated file contains bank history plus parsed Santander credit-card purchases. Marketplace transactions and ambiguous merchants are intentionally left as `needs_review` where their purpose cannot be established from the source document alone.
 
+## Deploy
+Replace:
+- `public/finances/index.html`
+- `src/index.js`
+- `README.md`
 
-## V2.8.1 - Finance Period Navigation
-- Replaces the unreliable month text control with previous/next month buttons.
-- Displays a readable month label such as September 2026.
-- Tapping the month label opens a legacy-iOS-safe month/year picker.
-- Month changes render cached data immediately and refresh D1 in the background.
+Health endpoint: `/api/health` -> `2.9`
