@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.9' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.9.1' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -135,7 +135,7 @@ export default {
         `).bind(start,end).all();
         const budget = await env.DB.prepare("SELECT amount FROM finance_budgets WHERE month = ? AND category_id IS NULL").bind(month).first();
         const income = Number(totals && totals.income || 0), expenses = Number(totals && totals.expenses || 0);
-        return json({ ok:true, version:'2.9', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
+        return json({ ok:true, version:'2.9.1', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
       }
 
       if (url.pathname === '/api/finance/transactions') {
@@ -152,7 +152,7 @@ export default {
             WHERE t.transaction_date >= ? AND t.transaction_date < ?
             ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1000
           `).bind(from,to).all();
-          return json({ok:true,version:'2.9',transactions:rows.results||[]});
+          return json({ok:true,version:'2.9.1',transactions:rows.results||[]});
         }
         if (request.method === 'POST') {
           let body; try { body=await request.json(); } catch(e){ return json({ok:false,error:'Invalid JSON.'},400); }
@@ -211,7 +211,7 @@ export default {
 
       if (url.pathname === '/api/finance/import' && request.method === 'POST') {
         let body;try{body=await request.json()}catch(e){return json({ok:false,error:'Invalid JSON.'},400)}
-        const rows=Array.isArray(body.transactions)?body.transactions:[]; if(!rows.length)return json({ok:false,error:'transactions array is required.'},400);
+        const rows=Array.isArray(body.transactions)?body.transactions:(Array.isArray(body)?body:[]); if(!rows.length)return json({ok:false,error:'Invalid finance import file - transactions array is required.',found:0},400);
         let imported=0,duplicates=0,rejected=0;
         for(const row of rows.slice(0,1000)){
           const date=validDate(row.date),desc=String(row.description||'').trim(),amount=Number(row.amount),type=String(row.type||'expense').toLowerCase(),source=String(row.source||body.source||'import'),externalId=row.externalId?String(row.externalId):null;
@@ -219,7 +219,7 @@ export default {
           if(externalId){const dup=await env.DB.prepare('SELECT id FROM finance_transactions WHERE source=? AND external_id=?').bind(source,externalId).first();if(dup){duplicates++;continue}}
           const catName=row.category?String(row.category):null; let categoryId=null; if(catName){const cat=await env.DB.prepare('SELECT id FROM finance_categories WHERE lower(name)=lower(?) AND type=?').bind(catName,type==='income'?'income':'expense').first(); categoryId=cat?cat.id:null;} let importAccountId=row.accountId?Number(row.accountId):null; if(!importAccountId && row.account){let ac=await env.DB.prepare('SELECT id FROM finance_accounts WHERE lower(name)=lower(?)').bind(String(row.account)).first(); if(!ac){const ar=await env.DB.prepare('INSERT INTO finance_accounts(name,institution,kind,owner,active) VALUES(?,?,?,?,1)').bind(String(row.account),String(row.institution||'Santander'),String(row.accountKind||'checking'),String(row.owner||'Family')).run(); importAccountId=ar.meta&&ar.meta.last_row_id;}else importAccountId=ac.id;} const reviewStatus=String(row.reviewStatus||'needs_review'), classSource=String(row.classificationSource||'import'); await env.DB.prepare("INSERT INTO finance_transactions(transaction_date,description,amount,type,category_id,account_id,owner,source,external_id,excluded,original_description,provider_category,review_status,classification_source,subcategory,notes,context,transaction_kind,installment_current,installment_total,merchant,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))").bind(date,desc,amount,type,categoryId,importAccountId,String(row.owner||'Family'),source,externalId,String(row.originalDescription||desc),row.providerCategory?String(row.providerCategory):null,reviewStatus,classSource,row.subcategory?String(row.subcategory):null,row.notes?String(row.notes):null,String(row.context||'Family'),String(row.transactionKind||'purchase'),row.installmentCurrent?Number(row.installmentCurrent):null,row.installmentTotal?Number(row.installmentTotal):null,row.merchant?String(row.merchant):null).run();imported++;
         }
-        return json({ok:true,imported,duplicates,rejected});
+        return json({ok:true,found:rows.length,imported,duplicates,rejected});
       }
 
       return json({ok:false,error:'Finance endpoint not found.'},404);

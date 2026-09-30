@@ -1,8 +1,8 @@
-# Family Dashboard V2.9 - Credit Card Intelligence
+# Family Dashboard V2.9.1 - Credit Card Intelligence
 
-V2.9 extends the Finance Core to consolidate bank statements and detailed credit-card statements without double counting.
+V2.9.1 extends the Finance Core to consolidate bank statements and detailed credit-card statements without double counting.
 
-## New in V2.9
+## New in V2.9.1
 - Finance transaction Context: `Family` or `3D Printing`
 - Account kind supports `credit_card`; Santander Mastercard is seeded automatically
 - Transaction kinds: purchase, refund/credit, credit-card payment, transfer
@@ -26,3 +26,10 @@ Replace:
 - `README.md`
 
 Health endpoint: `/api/health` -> `2.9`
+
+
+## V2.9.1 import fix
+- Validates the finance import schema before upload.
+- Imports historical transactions in small batches for reliable iPhone/Worker/D1 operation.
+- Shows transactions found, imported, duplicates, and rejected counts.
+- Accepts the canonical `{ transactions: [...] }` format and rejects empty/incompatible files clearly.
