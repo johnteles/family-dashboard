@@ -25,7 +25,7 @@ Replace:
 - `src/index.js`
 - `README.md`
 
-Health endpoint: `/api/health` -> `2.9.3`
+Health endpoint: `/api/health` -> `2.9.4`
 
 
 ## V2.9.2 import fix
@@ -41,10 +41,16 @@ Health endpoint: `/api/health` -> `2.9.3`
 - Import errors now return the exact failing row and D1 error instead of silently stopping at 0/281.
 - Historical JSON format remains unchanged from V2.9.1.
 
-## V2.9.3 resumable historical import
+## V2.9.4 resumable historical import
 - Historical finance imports are resumable through `finance_import_sessions`.
 - The iPhone checks server-side progress before uploading and continues from the last confirmed batch.
 - Each batch reports cumulative imported, duplicate, rejected, and D1 transaction counts.
 - Finance localStorage cache is invalidated after every successful batch and refreshed after completion.
 - `/api/finance/schema` now reports transaction counts by month for direct D1 verification.
 - If an import pauses, selecting the same JSON again resumes safely; existing rows remain protected by `external_id`.
+
+
+## V2.9.4 import hotfix
+- Fixes a SQL placeholder/bind-count mismatch in the historical finance import INSERT.
+- No D1 cleanup is required when transactionCount is 0.
+- Reuse the same consolidated V2.9.1 JSON file.
