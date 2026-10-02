@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.9.4' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.9.5' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -116,12 +116,12 @@ export default {
       try {
         await ensureFinanceSchema(env.DB);
       } catch (e) {
-        return json({ ok:false, step:'finance_schema', error:String(e && e.message ? e.message : e), version:'2.9.4' }, 500);
+        return json({ ok:false, step:'finance_schema', error:String(e && e.message ? e.message : e), version:'2.9.5' }, 500);
       }
 
       if (url.pathname === '/api/finance/schema' && request.method === 'GET') {
         const info = await financeSchemaStatus(env.DB);
-        return json({ok:true,version:'2.9.4',schema:info});
+        return json({ok:true,version:'2.9.5',schema:info});
       }
 
       if (url.pathname === '/api/finance/summary' && request.method === 'GET') {
@@ -144,7 +144,7 @@ export default {
         `).bind(start,end).all();
         const budget = await env.DB.prepare("SELECT amount FROM finance_budgets WHERE month = ? AND category_id IS NULL").bind(month).first();
         const income = Number(totals && totals.income || 0), expenses = Number(totals && totals.expenses || 0);
-        return json({ ok:true, version:'2.9.4', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
+        return json({ ok:true, version:'2.9.5', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
       }
 
       if (url.pathname === '/api/finance/transactions') {
@@ -161,7 +161,7 @@ export default {
             WHERE t.transaction_date >= ? AND t.transaction_date < ?
             ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1000
           `).bind(from,to).all();
-          return json({ok:true,version:'2.9.4',transactions:rows.results||[]});
+          return json({ok:true,version:'2.9.5',transactions:rows.results||[]});
         }
         if (request.method === 'POST') {
           let body; try { body=await request.json(); } catch(e){ return json({ok:false,error:'Invalid JSON.'},400); }
@@ -222,7 +222,7 @@ export default {
         const importId=String(url.searchParams.get('id')||'').trim();
         if(!importId) return json({ok:false,error:'Import id is required.'},400);
         const session=await env.DB.prepare('SELECT import_id,total_rows,position,imported,duplicates,rejected,status,last_error,updated_at FROM finance_import_sessions WHERE import_id=?').bind(importId).first();
-        return json({ok:true,version:'2.9.4',session:session?{importId:session.import_id,total:Number(session.total_rows||0),position:Number(session.position||0),imported:Number(session.imported||0),duplicates:Number(session.duplicates||0),rejected:Number(session.rejected||0),status:session.status,lastError:session.last_error,updatedAt:session.updated_at}:null});
+        return json({ok:true,version:'2.9.5',session:session?{importId:session.import_id,total:Number(session.total_rows||0),position:Number(session.position||0),imported:Number(session.imported||0),duplicates:Number(session.duplicates||0),rejected:Number(session.rejected||0),status:session.status,lastError:session.last_error,updatedAt:session.updated_at}:null});
       }
 
       if (url.pathname === '/api/finance/import' && request.method === 'POST') {
@@ -263,7 +263,7 @@ export default {
             const err=String(e&&e.message?e.message:e);
             errors.push({index:idx,externalId:row&&row.externalId||null,description:row&&row.description||null,error:err});
             if(importId) await env.DB.prepare("UPDATE finance_import_sessions SET status='paused',last_error=?,updated_at=datetime('now') WHERE import_id=?").bind(err,importId).run();
-            return json({ok:false,version:'2.9.4',step:'insert',found:rows.length,imported,duplicates,rejected,failedIndex:idx,error:err,row:errors[errors.length-1]},500);
+            return json({ok:false,version:'2.9.5',step:'insert',found:rows.length,imported,duplicates,rejected,failedIndex:idx,error:err,row:errors[errors.length-1]},500);
           }
         }
         const nextPosition=requestedPosition+rows.length;
@@ -275,7 +275,7 @@ export default {
           await env.DB.prepare("UPDATE finance_import_sessions SET total_rows=?,position=?,imported=?,duplicates=?,rejected=?,status=?,last_error=NULL,updated_at=datetime('now') WHERE import_id=?").bind(totalRows,nextPosition,totalImported,totalDuplicates,totalRejected,status,importId).run();
         }
         const dbCount=await env.DB.prepare('SELECT COUNT(*) AS count FROM finance_transactions').first();
-        return json({ok:true,version:'2.9.4',found:rows.length,imported,duplicates,rejected,nextPosition,totalRows,totalImported,totalDuplicates,totalRejected,transactionCountAfter:Number(dbCount&&dbCount.count||0),errors:errors.slice(0,10)});
+        return json({ok:true,version:'2.9.5',found:rows.length,imported,duplicates,rejected,nextPosition,totalRows,totalImported,totalDuplicates,totalRejected,transactionCountAfter:Number(dbCount&&dbCount.count||0),errors:errors.slice(0,10)});
       }
 
 
@@ -386,8 +386,8 @@ async function financeSchemaStatus(db) {
   const months=await db.prepare("SELECT substr(transaction_date,1,7) AS month, COUNT(*) AS count FROM finance_transactions GROUP BY substr(transaction_date,1,7) ORDER BY month").all();
   return {ready:missing.length===0,missing:missing,columns:names,transactionCount:Number(counts&&counts.transactions||0),months:(months.results||[]).map(function(r){return {month:r.month,count:Number(r.count||0)}})};
 }
-function validDate(v){return /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v||''))?String(v):null}
-function validMonth(v){return /^\\d{4}-\\d{2}$/.test(String(v||''))?String(v):null}
+function validDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(String(v||''))?String(v):null}
+function validMonth(v){return /^\d{4}-\d{2}$/.test(String(v||''))?String(v):null}
 function currentMonthKey(){const d=new Date();return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')}
 function nextMonthKey(m){const p=m.split('-');const d=new Date(Date.UTC(Number(p[0]),Number(p[1]),1));return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')}
 
