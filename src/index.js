@@ -7,7 +7,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health') {
-      return json({ ok: true, service: 'family-dashboard', version: '2.9.5' });
+      return json({ ok: true, service: 'family-dashboard', version: '2.9.6' });
     }
 
     if (url.pathname === '/oauth/start') {
@@ -116,12 +116,12 @@ export default {
       try {
         await ensureFinanceSchema(env.DB);
       } catch (e) {
-        return json({ ok:false, step:'finance_schema', error:String(e && e.message ? e.message : e), version:'2.9.5' }, 500);
+        return json({ ok:false, step:'finance_schema', error:String(e && e.message ? e.message : e), version:'2.9.6' }, 500);
       }
 
       if (url.pathname === '/api/finance/schema' && request.method === 'GET') {
         const info = await financeSchemaStatus(env.DB);
-        return json({ok:true,version:'2.9.5',schema:info});
+        return json({ok:true,version:'2.9.6',schema:info});
       }
 
       if (url.pathname === '/api/finance/summary' && request.method === 'GET') {
@@ -144,7 +144,7 @@ export default {
         `).bind(start,end).all();
         const budget = await env.DB.prepare("SELECT amount FROM finance_budgets WHERE month = ? AND category_id IS NULL").bind(month).first();
         const income = Number(totals && totals.income || 0), expenses = Number(totals && totals.expenses || 0);
-        return json({ ok:true, version:'2.9.5', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
+        return json({ ok:true, version:'2.9.6', month, income, expenses, balance: income-expenses, budget: budget ? Number(budget.amount) : null, categories: cats.results || [] });
       }
 
       if (url.pathname === '/api/finance/transactions') {
@@ -161,7 +161,7 @@ export default {
             WHERE t.transaction_date >= ? AND t.transaction_date < ?
             ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1000
           `).bind(from,to).all();
-          return json({ok:true,version:'2.9.5',transactions:rows.results||[]});
+          return json({ok:true,version:'2.9.6',transactions:rows.results||[]});
         }
         if (request.method === 'POST') {
           let body; try { body=await request.json(); } catch(e){ return json({ok:false,error:'Invalid JSON.'},400); }
@@ -222,7 +222,19 @@ export default {
         const importId=String(url.searchParams.get('id')||'').trim();
         if(!importId) return json({ok:false,error:'Import id is required.'},400);
         const session=await env.DB.prepare('SELECT import_id,total_rows,position,imported,duplicates,rejected,status,last_error,updated_at FROM finance_import_sessions WHERE import_id=?').bind(importId).first();
-        return json({ok:true,version:'2.9.5',session:session?{importId:session.import_id,total:Number(session.total_rows||0),position:Number(session.position||0),imported:Number(session.imported||0),duplicates:Number(session.duplicates||0),rejected:Number(session.rejected||0),status:session.status,lastError:session.last_error,updatedAt:session.updated_at}:null});
+        return json({ok:true,version:'2.9.6',session:session?{importId:session.import_id,total:Number(session.total_rows||0),position:Number(session.position||0),imported:Number(session.imported||0),duplicates:Number(session.duplicates||0),rejected:Number(session.rejected||0),status:session.status,lastError:session.last_error,updatedAt:session.updated_at}:null});
+      }
+
+      if (url.pathname === '/api/finance/import/preflight' && request.method === 'POST') {
+        let body; try { body=await request.json(); } catch(e) { return json({ok:false,error:'Invalid JSON.',step:'parse'},400); }
+        const rows=Array.isArray(body.transactions)?body.transactions:(Array.isArray(body)?body:[]);
+        if(!rows.length) return json({ok:false,error:'Invalid finance import file - transactions array is required.',found:0,valid:0,invalid:0},400);
+        const errors=[]; let valid=0;
+        for(let i=0;i<rows.length;i++){
+          const n=normalizeFinanceTransaction(rows[i],body.source||'import');
+          if(n.ok) valid++; else if(errors.length<10) errors.push({index:i,externalId:rows[i]&&rows[i].externalId||null,description:rows[i]&&rows[i].description||null,error:n.error,normalized:n.preview});
+        }
+        return json({ok:true,version:'2.9.6',found:rows.length,valid:valid,invalid:rows.length-valid,ready:valid===rows.length,errors:errors});
       }
 
       if (url.pathname === '/api/finance/import' && request.method === 'POST') {
@@ -245,8 +257,9 @@ export default {
         for(let idx=0; idx<rows.slice(0,1000).length; idx++){
           const row=rows[idx];
           try {
-            const date=validDate(row.date),desc=String(row.description||'').trim(),amount=Number(row.amount),type=String(row.type||'expense').toLowerCase(),source=String(row.source||body.source||'import'),externalId=row.externalId?String(row.externalId):null;
-            if(!date||!desc||!Number.isFinite(amount)||amount<0||!['income','expense','transfer'].includes(type)){rejected++;errors.push({index:idx,error:'Invalid date/description/amount/type'});continue;}
+            const normalized=normalizeFinanceTransaction(row,body.source||'import');
+            if(!normalized.ok){rejected++;errors.push({index:idx,externalId:row&&row.externalId||null,description:row&&row.description||null,error:normalized.error,normalized:normalized.preview});continue;}
+            const date=normalized.value.date,desc=normalized.value.description,amount=normalized.value.amount,type=normalized.value.type,source=normalized.value.source,externalId=normalized.value.externalId;
             if(externalId){const dup=await env.DB.prepare('SELECT id FROM finance_transactions WHERE source=? AND external_id=?').bind(source,externalId).first();if(dup){duplicates++;continue;}}
             const catName=row.category?String(row.category):null; let categoryId=null;
             if(catName){const cat=await env.DB.prepare('SELECT id FROM finance_categories WHERE lower(name)=lower(?) AND type=?').bind(catName,type==='income'?'income':'expense').first();categoryId=cat?cat.id:null;}
@@ -263,7 +276,7 @@ export default {
             const err=String(e&&e.message?e.message:e);
             errors.push({index:idx,externalId:row&&row.externalId||null,description:row&&row.description||null,error:err});
             if(importId) await env.DB.prepare("UPDATE finance_import_sessions SET status='paused',last_error=?,updated_at=datetime('now') WHERE import_id=?").bind(err,importId).run();
-            return json({ok:false,version:'2.9.5',step:'insert',found:rows.length,imported,duplicates,rejected,failedIndex:idx,error:err,row:errors[errors.length-1]},500);
+            return json({ok:false,version:'2.9.6',step:'insert',found:rows.length,imported,duplicates,rejected,failedIndex:idx,error:err,row:errors[errors.length-1]},500);
           }
         }
         const nextPosition=requestedPosition+rows.length;
@@ -275,7 +288,7 @@ export default {
           await env.DB.prepare("UPDATE finance_import_sessions SET total_rows=?,position=?,imported=?,duplicates=?,rejected=?,status=?,last_error=NULL,updated_at=datetime('now') WHERE import_id=?").bind(totalRows,nextPosition,totalImported,totalDuplicates,totalRejected,status,importId).run();
         }
         const dbCount=await env.DB.prepare('SELECT COUNT(*) AS count FROM finance_transactions').first();
-        return json({ok:true,version:'2.9.5',found:rows.length,imported,duplicates,rejected,nextPosition,totalRows,totalImported,totalDuplicates,totalRejected,transactionCountAfter:Number(dbCount&&dbCount.count||0),errors:errors.slice(0,10)});
+        return json({ok:true,version:'2.9.6',found:rows.length,imported,duplicates,rejected,nextPosition,totalRows,totalImported,totalDuplicates,totalRejected,transactionCountAfter:Number(dbCount&&dbCount.count||0),errors:errors.slice(0,10)});
       }
 
 
@@ -385,6 +398,27 @@ async function financeSchemaStatus(db) {
   const counts=await db.prepare('SELECT COUNT(*) AS transactions FROM finance_transactions').first();
   const months=await db.prepare("SELECT substr(transaction_date,1,7) AS month, COUNT(*) AS count FROM finance_transactions GROUP BY substr(transaction_date,1,7) ORDER BY month").all();
   return {ready:missing.length===0,missing:missing,columns:names,transactionCount:Number(counts&&counts.transactions||0),months:(months.results||[]).map(function(r){return {month:r.month,count:Number(r.count||0)}})};
+}
+function normalizeFinanceTransaction(row,defaultSource){
+  row=row||{};
+  const rawDate=row.date!=null?row.date:row.transaction_date;
+  const date=validDate(rawDate);
+  const description=String(row.description||'').trim();
+  let amount=row.amount;
+  if(typeof amount==='string'){
+    amount=amount.trim();
+    if(amount.indexOf(',')>=0) amount=amount.replace(/\./g,'').replace(',','.');
+  }
+  amount=Number(amount);
+  const type=String(row.type||'expense').toLowerCase().trim();
+  const source=String(row.source||defaultSource||'import').trim()||'import';
+  const externalId=row.externalId!=null?String(row.externalId):(row.external_id!=null?String(row.external_id):null);
+  const preview={date:rawDate,description:description,amount:row.amount,type:type,source:source,externalId:externalId};
+  if(!date) return {ok:false,error:'Invalid date. Expected YYYY-MM-DD.',preview:preview};
+  if(!description) return {ok:false,error:'Description is required.',preview:preview};
+  if(!Number.isFinite(amount)||amount<0) return {ok:false,error:'Amount must be a non-negative number.',preview:preview};
+  if(['income','expense','transfer'].indexOf(type)<0) return {ok:false,error:'Type must be income, expense or transfer.',preview:preview};
+  return {ok:true,value:{date:date,description:description,amount:amount,type:type,source:source,externalId:externalId},preview:preview};
 }
 function validDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(String(v||''))?String(v):null}
 function validMonth(v){return /^\d{4}-\d{2}$/.test(String(v||''))?String(v):null}
