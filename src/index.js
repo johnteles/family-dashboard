@@ -1,6 +1,7 @@
 const REDIRECT_PATH = '/oauth/callback';
 const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 const FAMILY_CALENDARS = ['John', 'Amanda', 'Anthony', 'Family'];
+const OAUTH_ORIGIN = 'https://family-dashboard.johnfteles.workers.dev';
 
 export default {
   async fetch(request, env) {
@@ -12,7 +13,8 @@ export default {
 
     if (url.pathname === '/oauth/start') {
       if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return text('Google OAuth is not configured.', 503);
-      const redirectUri = `${url.origin}${REDIRECT_PATH}`;
+       if (url.origin !== OAUTH_ORIGIN) return text('Use the canonical Family Dashboard URL to authorize.', 400);
+      const redirectUri = `${OAUTH_ORIGIN}${REDIRECT_PATH}`;
       const state = crypto.randomUUID();
       const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       auth.searchParams.set('client_id', env.GOOGLE_CLIENT_ID);
@@ -29,15 +31,20 @@ export default {
     if (url.pathname === REDIRECT_PATH) {
       const error = url.searchParams.get('error');
       if (error) return text(`Google OAuth declined: ${error}`, 400);
-      const code = url.searchParams.get('code');
+      if (url.origin !== OAUTH_ORIGIN) return text('OAuth callback origin mismatch.', 400);
+       const code = url.searchParams.get('code');
       const state = url.searchParams.get('state');
       const cookieState = getCookie(request.headers.get('cookie') || '', 'oauth_state');
       if (!code || !state || !cookieState || state !== cookieState) return text('OAuth validation failed.', 400);
-      const redirectUri = `${url.origin}${REDIRECT_PATH}`;
+      const redirectUri = `${OAUTH_ORIGIN}${REDIRECT_PATH}`;
       const body = new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: redirectUri, grant_type: 'authorization_code' });
       const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
       const tokenData = await tokenResponse.json();
-      if (!tokenResponse.ok) return json({ ok: false, step: 'token_exchange', error: tokenData }, 502);
+      if (!tokenResponse.ok) {
+         const googleError = String(tokenData && tokenData.error || 'unknown');
+         const googleDescription = String(tokenData && tokenData.error_description || '');
+         return json({ ok: false, step: 'token_exchange', googleError, googleDescription, diagnostics: { redirectUriMatchesConfigured: redirectUri === OAUTH_ORIGIN + REDIRECT_PATH, clientIdPresent: Boolean(env.GOOGLE_CLIENT_ID), clientSecretPresent: Boolean(env.GOOGLE_CLIENT_SECRET), stateVerified: true }, nextStep: googleError === 'invalid_grant' ? 'Start a fresh OAuth authorization once. If this persists, check the exact Google OAuth client ID/secret pairing and Worker token-exchange implementation.' : 'Check Google OAuth client configuration.' }, 502);
+       }
       if (!tokenData.refresh_token) return text('Google did not return a refresh token.', 409);
       return html(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Family Dashboard OAuth</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif;max-width:760px;margin:48px auto;padding:0 20px;line-height:1.5}code{display:block;word-break:break-all;padding:16px;background:#f2f2f2;border-radius:10px}</style><h1>Authorization complete</h1><p>Save the value below as the <b>GOOGLE_REFRESH_TOKEN</b> Secret.</p><code>${escapeHtml(tokenData.refresh_token)}</code></html>`);
     }
